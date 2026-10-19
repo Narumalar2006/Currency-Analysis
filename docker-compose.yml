@@ -1,0 +1,60 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: currency-postgres
+    environment:
+      POSTGRES_USER: currency_user
+      POSTGRES_PASSWORD: change_this_password
+      POSTGRES_DB: currency_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U currency_user -d currency_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  airflow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: currency-airflow
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW_CONN_CURRENCY_POSTGRES: postgresql://currency_user:change_this_password@postgres:5432/currency_db
+      _PIP_ADDITIONAL_REQUIREMENTS: ""
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - airflow_data:/opt/airflow
+    command: standalone
+    restart: unless-stopped
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: currency-metabase
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      MB_DB_FILE: /metabase-data/metabase.db
+    ports:
+      - "3000:3000"
+    volumes:
+      - metabase_data:/metabase-data
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  airflow_data:
+  metabase_data:
